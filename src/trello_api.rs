@@ -1,6 +1,6 @@
 use chrono::prelude::{DateTime, Utc};
 use reqwest::blocking::Client;
-use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde::de::{self, Deserialize, Deserializer, Error, MapAccess, SeqAccess, Visitor};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use serde::Deserialize as DeserializeMacro;
 use serde::Serialize as SerializeMacro;
