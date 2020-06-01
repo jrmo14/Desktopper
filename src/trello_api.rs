@@ -1,6 +1,6 @@
 use chrono::prelude::{DateTime, Utc};
 use reqwest::blocking::Client;
-use serde::de::{self, Deserialize, Deserializer, Error, MapAccess, SeqAccess, Visitor};
+use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use serde::Deserialize as DeserializeMacro;
 use serde::Serialize as SerializeMacro;
@@ -68,7 +68,8 @@ pub struct Checklist {
 #[allow(non_snake_case)]
 pub struct CheckItem {
     idChecklist: String,
-    state: bool, // Will be complete/incomplete in response from api -> custom (de)serialization
+    state: bool,
+    // Will be complete/incomplete in response from api -> custom (de)serialization
     id: String,
     name: String,
 }
@@ -383,8 +384,9 @@ impl Serialize for CheckItem {
 
 #[cfg(test)]
 mod test {
-    use super::{Board, CheckItem, Checklist, List, TrelloApi, ID};
+    use super::{CheckItem, TrelloApi, ID};
     use serde_json;
+
     #[test]
     fn check_item_complete_deserialization() {
         let reference = CheckItem {
@@ -497,43 +499,42 @@ mod test {
     fn integration_test() {
         let api = TrelloApi::new();
         if !api.is_valid() {
-            std::process::exit(1);
+            assert!(false);
         }
 
-        println!("\nBOARDS");
-        let boards = api.get_boards().unwrap();
-        for board in &boards {
-            println!("{:?}", board)
-        }
-        // Obv, any of these will fail if the previous one does,
-        // but I don't care about that safety for this test/demo
+        let boards = match api.get_boards() {
+            Some(boards) => boards,
+            None => {
+                assert!(false);
+                return;
+            }
+        };
 
-        println!("\nLISTS");
         let board_id = boards[10].get_id();
-        let lists = api.get_lists(board_id).unwrap();
-        for list in &lists {
-            println!("{:?}", list);
-        }
+        let lists = match api.get_lists(board_id) {
+            Some(lists) => lists,
+            None => {
+                assert!(false);
+                return;
+            }
+        };
 
-        println!("\nCARDS");
         let list_id = lists[0].get_id();
-        let cards = api.get_cards(list_id).unwrap();
-        for card in &cards {
-            println!("{:?}", card);
-        }
+        let cards = match api.get_cards(list_id) {
+            Some(cards) => cards,
+            None => {
+                assert!(false);
+                return;
+            }
+        };
 
-        println!("\nCHECKLISTS");
         let card_id = cards[0].get_id();
         match api.get_checklists(card_id) {
-            Some(lists) => {
-                for list in &lists {
-                    println!("{:?}", list);
-                }
+            Some(_) => assert!(true),
+            None => {
+                assert!(false);
+                return;
             }
-            None => println!(
-                "Couldn't retreive a check lists from card with id {}",
-                card_id
-            ),
         }
     }
 }

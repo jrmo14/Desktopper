@@ -1,12 +1,10 @@
-use std::boxed::Box;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use chrono::prelude::{DateTime, Local};
 use serde::{Deserialize, Serialize};
+use std::borrow::{Borrow, BorrowMut};
 use uuid::Uuid;
-use std::ops::Deref;
-use std::borrow::BorrowMut;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct ToDo {
@@ -30,7 +28,7 @@ pub trait EstTime {
     fn est_time(&self) -> i32;
 }
 
-#[derive(Deserialize, Serialize, Debug, Copy, Clone)]
+#[derive(Deserialize, Serialize, Copy, Clone, Debug)]
 pub enum Priority {
     Low,
     Medium,
@@ -49,33 +47,31 @@ impl ToDo {
     pub fn add_task(&mut self, uuid_parent: Option<Uuid>, task: Task) -> Result<(), &'static str> {
         match uuid_parent {
             Some(parent_uuid) => {
-                let uuid_path = match self.paths.get(&parent_uuid) {
+                let path = match self.paths.get(&parent_uuid.clone()) {
                     Some(path) => path,
-                    None => return Err("Parent doesn't exist")
+                    None => return Err("Unable to find parent"),
                 };
-                let mut uuid_iter = uuid_path.into_iter();
-                // Grab the root parent
-                let mut parent_task = *self.tasks.get(uuid_iter.next().unwrap()).unwrap().clone();
-                // Walk through the tasks until we hit the end
-                while let Some(id) = uuid_iter.next() {
-                    parent_task = *parent_task.subtasks.unwrap().get(id).unwrap().clone();
+
+                let mut path_iter = path.iter();
+                let mut parent = self.tasks.get(path_iter.next().unwrap()).unwrap();
+                while let Some(next_uuid) = path_iter.next() {
+                    parent = parent.subtasks.as_ref().unwrap().get(next_uuid).unwrap();
                 }
-                // Make sure that the subtasks map exist
-                match &parent_task.subtasks {
-                    Some(subtask_map) => {}
-                    None => parent_task.subtasks = Some(HashMap::new()),
-                }
-                // Place the task
-                parent_task.subtasks.unwrap().insert(task.uuid, Box::new(task.clone()));
-                let mut new_path = uuid_path.clone();
-                new_path.push(task.uuid);
-                self.paths.insert(task.uuid, new_path);
+                // Grab the parent so it's ours and we can mutate it safely
+                parent.to_owned().add_task(task.clone());
+                info!("Parent: {:?}", parent);
+                let mut new_path = path.clone();
+                new_path.push(task.uuid.clone());
+                self.paths.insert(task.uuid.clone(), new_path);
             }
             None => {
-                self.tasks.insert(task.uuid, Box::new(task.clone()));
-                self.paths.insert(task.uuid, vec![task.uuid]);
+                self.tasks.insert(task.uuid.clone(), Box::new(task.clone()));
+                self.paths.insert(task.uuid.clone(), vec![task.uuid]);
             }
         }
+        info!("tasks: {:?}", self.tasks);
+        info!("paths: {:?}", self.paths.keys());
+        debug!("{:?}", self);
         Ok(())
     }
 
@@ -92,7 +88,10 @@ impl ToDo {
     }
 
     pub fn get_all_tasks(&self) -> Vec<Task> {
-        self.tasks.values().map(|task_box| (&**task_box).clone()).collect()
+        self.tasks
+            .values()
+            .map(|task_box| (&**task_box).clone())
+            .collect()
     }
 }
 
@@ -106,7 +105,8 @@ impl Eq for ToDo {}
 
 impl PartialEq for ToDo {
     fn eq(&self, other: &Self) -> bool {
-        self.tasks.len() == other.tasks.len() && self.tasks.keys().all(|key| other.tasks.contains_key(key))
+        self.tasks.len() == other.tasks.len()
+            && self.tasks.keys().all(|key| other.tasks.contains_key(key))
     }
 }
 
@@ -130,7 +130,7 @@ impl Task {
                         .map(|task| (task.get_uuid(), Box::new(task.clone())))
                         .collect(),
                 ),
-                None => None,
+                None => Some(HashMap::new()),
             },
             due_date,
             _est_time,
@@ -151,7 +151,7 @@ impl Task {
             .insert(subtask.uuid, Box::new(subtask));
     }
 
-    fn get_uuid(&self) -> Uuid {
+    pub fn get_uuid(&self) -> Uuid {
         self.uuid
     }
 }
@@ -203,7 +203,7 @@ impl PartialEq for Task {
                 None => false,
             },
             None => match &other.subtasks {
-                Some(other_tasks) => false,
+                Some(_) => false,
                 None => true,
             },
         };
@@ -239,9 +239,11 @@ impl PartialEq for Priority {
 
 #[cfg(test)]
 mod test {
-    use chrono::{DateTime, Duration, Local};
+    use chrono::{Duration, Local};
 
     use super::{EstTime, Priority, Task, ToDo};
+    use std::boxed::Box;
+    use std::rc::Box;
 
     #[test]
     fn task_sort_priority() {
@@ -406,7 +408,7 @@ mod test {
         let mut ref_task = Task::new("TEST", "TEST", None, None, 0, None);
         ref_task.add_task(subtask.clone());
 
-        let mut test_task = Task {
+        let test_task = Task {
             name: "TEST".to_string(),
             desc: "TEST".to_string(),
             finished: false,
@@ -423,10 +425,7 @@ mod test {
 
         let test_uuid = test_task.get_uuid();
         assert_eq!(test_todo.add_task(None, test_task), Ok(()));
-        assert_eq!(
-            test_todo.add_task(Some(test_uuid), subtask.clone()),
-            Ok(())
-        );
+        assert_eq!(test_todo.add_task(Some(test_uuid), subtask.clone()), Ok(()));
 
         assert_eq!(ref_todo, test_todo);
     }
