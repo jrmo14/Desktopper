@@ -38,8 +38,8 @@ async fn main() {
     // TODO remove
     let subtask = Task::new("SUB_TEST", "SUB_TEST", None, None, 0, None);
     let mut ref_task = Task::new("TEST", "TEST", None, None, 0, None);
+    let subtask2 = Task::new("SUB_TEST2", "SUB_TEST2", None, None, 0, None);
 
-    ref_task.add_task(subtask.clone());
     // Test data
     // TODO remove
     match data_store
@@ -55,7 +55,16 @@ async fn main() {
     match data_store
         .todo_list
         .write()
-        .add_task(Option::from(ref_task.get_uuid()), subtask)
+        .add_task(Option::from(ref_task.get_uuid()), subtask.clone())
+    {
+        Ok(()) => {}
+        Err(e) => println!("{}", e),
+    }
+
+    match data_store
+        .todo_list
+        .write()
+        .add_task(Option::from(subtask.get_uuid()), subtask2)
     {
         Ok(()) => {}
         Err(e) => println!("{}", e),

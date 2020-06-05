@@ -53,12 +53,17 @@ impl ToDo {
                 };
 
                 let mut path_iter = path.iter();
-                let mut parent = self.tasks.get(path_iter.next().unwrap()).unwrap();
+                let mut parent = self.tasks.get_mut(path_iter.next().unwrap()).unwrap();
                 while let Some(next_uuid) = path_iter.next() {
-                    parent = parent.subtasks.as_ref().unwrap().get(next_uuid).unwrap();
+                    parent = parent
+                        .subtasks
+                        .as_mut()
+                        .unwrap()
+                        .get_mut(next_uuid)
+                        .unwrap();
                 }
                 // Grab the parent so it's ours and we can mutate it safely
-                parent.to_owned().add_task(task.clone());
+                parent.add_task(task.clone());
                 info!("Parent: {:?}", parent);
                 let mut new_path = path.clone();
                 new_path.push(task.uuid.clone());
