@@ -1,12 +1,13 @@
 use chrono::prelude::{DateTime, Utc};
 use reqwest::blocking::Client;
-use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde::de::{Deserialize, Deserializer, Error, MapAccess, SeqAccess, Visitor};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use serde::Deserialize as DeserializeMacro;
 use serde::Serialize as SerializeMacro;
 use std::env;
 use std::fmt;
 
+#[derive(Default, Clone)]
 pub struct TrelloApi {
     key: Option<String>,
     token: Option<String>,
@@ -258,7 +259,7 @@ impl<'de> Deserialize<'de> for CheckItem {
 
                     fn visit_str<E>(self, value: &str) -> Result<Field, E>
                     where
-                        E: de::Error,
+                        E: Error,
                     {
                         match value {
                             "id" => Ok(Field::Id),
@@ -286,16 +287,16 @@ impl<'de> Deserialize<'de> for CheckItem {
             {
                 let id_check_str = seq
                     .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                    .ok_or_else(|| Error::invalid_length(0, &self))?;
                 let state_str: String = seq
                     .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                    .ok_or_else(|| Error::invalid_length(1, &self))?;
                 let id_str = seq
                     .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(2, &self))?;
+                    .ok_or_else(|| Error::invalid_length(2, &self))?;
                 let name_str = seq
                     .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(3, &self))?;
+                    .ok_or_else(|| Error::invalid_length(3, &self))?;
                 Ok(CheckItem {
                     idChecklist: id_check_str,
                     id: id_str,
@@ -316,25 +317,25 @@ impl<'de> Deserialize<'de> for CheckItem {
                     match key {
                         Field::IdChecklist => {
                             if id_chk.is_some() {
-                                return Err(de::Error::duplicate_field("idChecklist"));
+                                return Err(Error::duplicate_field("idChecklist"));
                             }
                             id_chk = Some(map.next_value()?);
                         }
                         Field::State => {
                             if state_str.is_some() {
-                                return Err(de::Error::duplicate_field("state"));
+                                return Err(Error::duplicate_field("state"));
                             }
                             state_str = Some(map.next_value()?);
                         }
                         Field::Name => {
                             if name_str.is_some() {
-                                return Err(de::Error::duplicate_field("name"));
+                                return Err(Error::duplicate_field("name"));
                             }
                             name_str = Some(map.next_value()?);
                         }
                         Field::Id => {
                             if id_str.is_some() {
-                                return Err(de::Error::duplicate_field("id"));
+                                return Err(Error::duplicate_field("id"));
                             }
                             id_str = Some(map.next_value()?);
                         }
@@ -344,11 +345,10 @@ impl<'de> Deserialize<'de> for CheckItem {
                         }
                     }
                 }
-                let id_chk = id_chk.ok_or_else(|| de::Error::missing_field("idChecklist"))?;
-                let state_str: String =
-                    state_str.ok_or_else(|| de::Error::missing_field("state"))?;
-                let id_str = id_str.ok_or_else(|| de::Error::missing_field("id"))?;
-                let name_str = name_str.ok_or_else(|| de::Error::missing_field("name"))?;
+                let id_chk = id_chk.ok_or_else(|| Error::missing_field("idChecklist"))?;
+                let state_str: String = state_str.ok_or_else(|| Error::missing_field("state"))?;
+                let id_str = id_str.ok_or_else(|| Error::missing_field("id"))?;
+                let name_str = name_str.ok_or_else(|| Error::missing_field("name"))?;
                 Ok(CheckItem {
                     idChecklist: id_chk,
                     id: id_str,

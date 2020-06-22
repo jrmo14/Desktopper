@@ -2,7 +2,7 @@
 extern crate log;
 extern crate pretty_env_logger;
 
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::BufReader;
 use std::ops::DerefMut;
 use std::process;
@@ -10,7 +10,6 @@ use std::process;
 use warp::Filter;
 
 use crate::data_model::DataStore;
-use wall_disp::tasks::{Task, ToDo};
 
 const SAVE_FILE_PATH: &str = "todo.json";
 
@@ -70,7 +69,6 @@ mod filters {
     use warp::Filter;
 
     use crate::{handlers, DataStore};
-    use std::hash::Hash;
     use wall_disp::tasks::{Priority, Task};
 
     pub fn task_master(
@@ -83,7 +81,7 @@ mod filters {
                 .or(estimate_time(storage.clone()))
                 .or(complete(storage.clone()))
                 .or(completion_status(storage.clone()))
-                .or(search(storage.clone())),
+                .or(search(storage)),
         )
     }
 
@@ -246,7 +244,6 @@ mod handlers {
     use chrono::{DateTime, Local};
     use std::ops::Deref;
     use wall_disp::tasks::{CompletionStatus, EstTime, FlattenTasks, Priority, Task};
-    use warp::reply::Json;
 
     pub async fn add_task(
         uuid: Option<Uuid>,

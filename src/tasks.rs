@@ -5,11 +5,10 @@ use std::collections::HashMap;
 
 use chrono::prelude::{DateTime, Local};
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 use std::str::FromStr;
 use uuid::Uuid;
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Default, Deserialize, Serialize, Debug)]
 pub struct ToDo {
     tasks: HashMap<Uuid, Box<Task>>,
     paths: HashMap<Uuid, Vec<Uuid>>,
@@ -66,7 +65,7 @@ impl ToDo {
 
                 let mut path_iter = path.iter();
                 let mut parent = self.tasks.get_mut(path_iter.next().unwrap()).unwrap();
-                while let Some(next_uuid) = path_iter.next() {
+                for next_uuid in path_iter {
                     parent = parent
                         .subtasks
                         .as_mut()
@@ -274,11 +273,11 @@ impl Task {
     }
 
     pub fn get_due_date(&self) -> Option<DateTime<Local>> {
-        self.due_date.clone()
+        self.due_date
     }
 
     pub fn get_priority(&self) -> Option<Priority> {
-        self.priority.clone()
+        self.priority
     }
 }
 
@@ -301,10 +300,10 @@ impl FlattenTasks for Task {
             desc: self.desc.clone(),
             finished: self.finished,
             subtasks: None,
-            due_date: self.due_date.clone(),
-            _est_time: self._est_time.clone(),
-            priority: self.priority.clone(),
-            uuid: self.uuid.clone(),
+            due_date: self.due_date,
+            _est_time: self._est_time,
+            priority: self.priority,
+            uuid: self.uuid,
         };
         ret.push(tmp);
         let subtasks = match &self.subtasks {
@@ -314,10 +313,10 @@ impl FlattenTasks for Task {
                     desc: task.desc.clone(),
                     finished: task.finished,
                     subtasks: None,
-                    due_date: task.due_date.clone(),
-                    _est_time: task._est_time.clone(),
-                    priority: task.priority.clone(),
-                    uuid: task.uuid.clone(),
+                    due_date: task.due_date,
+                    _est_time: task._est_time,
+                    priority: task.priority,
+                    uuid: task.uuid,
                 });
                 let children = st
                     .values()
@@ -335,7 +334,7 @@ impl FlattenTasks for Task {
 }
 
 impl Priority {
-    pub fn val(&self) -> i32 {
+    pub fn val(self) -> i32 {
         match self {
             Priority::Low => 1,
             Priority::Medium => 2,
@@ -384,10 +383,7 @@ impl PartialEq for Task {
                     .all(|x| x),
                 None => false,
             },
-            None => match &other.subtasks {
-                Some(_) => false,
-                None => true,
-            },
+            None => other.subtasks.is_none(),
         };
         subtasks_match
             && self.name == other.name
