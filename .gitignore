@@ -1,3 +1,5 @@
 /target
 .idea
 src/demo.rs
+todo.json
+.cargo

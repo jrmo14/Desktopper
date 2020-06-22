@@ -17,3 +17,9 @@ parking_lot = "0.10.2"
 uuid = { version = "^0.8", features = ["serde", "v4"] }
 log = "^0.4"
 pretty_env_logger = "^0.4"
+signal-hook = {version = "0.1.15", features = ["tokio-support"]}
+openssl-sys = "*"
+
+[features]
+vendored = ["openssl-sys/vendored"]
+

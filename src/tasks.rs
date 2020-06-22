@@ -1,9 +1,12 @@
+// TODO refactor function layout to make more sense
+
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use chrono::prelude::{DateTime, Local};
 use serde::{Deserialize, Serialize};
-use std::borrow::{Borrow, BorrowMut};
+use std::error::Error;
+use std::str::FromStr;
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -36,6 +39,15 @@ pub enum Priority {
     Extreme,
 }
 
+pub trait CompletionStatus {
+    fn complete(&self) -> bool;
+    fn completion_status(&self) -> (i32, i32);
+}
+
+pub trait FlattenTasks {
+    fn flatten_tasks(&self) -> Vec<Task>;
+}
+
 impl ToDo {
     pub fn new() -> Self {
         ToDo {
@@ -44,10 +56,10 @@ impl ToDo {
         }
     }
 
-    pub fn add_task(&mut self, uuid_parent: Option<Uuid>, task: Task) -> Result<(), &'static str> {
-        match uuid_parent {
-            Some(parent_uuid) => {
-                let path = match self.paths.get(&parent_uuid.clone()) {
+    pub fn add_task(&mut self, id_parent: Option<Uuid>, task: Task) -> Result<(), &'static str> {
+        match id_parent {
+            Some(parent_id) => {
+                let path = match self.paths.get(&parent_id.clone()) {
                     Some(path) => path,
                     None => return Err("Unable to find parent"),
                 };
@@ -64,7 +76,7 @@ impl ToDo {
                 }
                 // Grab the parent so it's ours and we can mutate it safely
                 parent.add_task(task.clone());
-                info!("Parent: {:?}", parent);
+                debug!("Parent: {:?}", parent);
                 let mut new_path = path.clone();
                 new_path.push(task.uuid.clone());
                 self.paths.insert(task.uuid.clone(), new_path);
@@ -74,28 +86,114 @@ impl ToDo {
                 self.paths.insert(task.uuid.clone(), vec![task.uuid]);
             }
         }
-        info!("tasks: {:?}", self.tasks);
-        info!("paths: {:?}", self.paths.keys());
         debug!("{:?}", self);
         Ok(())
     }
 
-    pub fn get_task(&self, uuid: Uuid) -> Option<Task> {
-        let path = match self.paths.get(&uuid) {
-            Some(p) => p,
-            None => return None,
+    pub fn remove_task(&mut self, id: Uuid) -> Result<Option<Task>, &'static str> {
+        // Make sure to grab one above the parent
+        let mut path_iter = match self.paths.get(&id) {
+            Some(path) => path.as_slice()[0..path.len() - 1].iter(),
+            None => return Err("No path for id"),
         };
-        let mut t = self.tasks.get(&path[0]);
-        for idx in 1..path.len() {
-            t = t.unwrap().subtasks.as_ref().unwrap().get(&path[idx]);
+        match path_iter.next() {
+            Some(root_id) => {
+                let mut parent = self.tasks.get_mut(root_id).unwrap();
+                for next_id in path_iter {
+                    parent = parent.subtasks.as_mut().unwrap().get_mut(next_id).unwrap();
+                }
+                Ok(parent.remove_subtask_task(id))
+            }
+            None => Ok(self.tasks.remove(&id).map(|task_box| (&*task_box).clone())),
         }
-        Some(t.unwrap().as_ref().clone())
     }
 
-    pub fn get_all_tasks(&self) -> Vec<Task> {
+    pub fn get_task(&self, id: Uuid) -> Option<&Task> {
+        let mut path_iter = match self.paths.get(&id) {
+            Some(path) => path.iter(),
+            None => return None,
+        };
+        let mut task = self.tasks.get(path_iter.next().unwrap());
+        for next_id in path_iter {
+            task = task.unwrap().subtasks.as_ref().unwrap().get(next_id);
+        }
+        task.map(|task_box| task_box.as_ref())
+    }
+
+    pub fn get_task_mut(&mut self, id: Uuid) -> Option<&mut Task> {
+        let mut path_iter = match self.paths.get_mut(&id) {
+            Some(path) => path.iter(),
+            None => return None,
+        };
+        let mut task = self.tasks.get_mut(path_iter.next().unwrap());
+        for next_task in path_iter {
+            task = task.unwrap().subtasks.as_mut().unwrap().get_mut(next_task);
+        }
+        task.map(|task_box| task_box.as_mut())
+    }
+
+    pub fn get_all_tasks(&self) -> Vec<&Task> {
         self.tasks
             .values()
-            .map(|task_box| (&**task_box).clone())
+            .map(|task_box| task_box.as_ref())
+            .collect()
+    }
+
+    pub fn get_all_tasks_mut(&mut self) -> Vec<&mut Task> {
+        self.tasks
+            .values_mut()
+            .map(|task_box| task_box.as_mut())
+            .collect()
+    }
+}
+
+impl CompletionStatus for ToDo {
+    fn complete(&self) -> bool {
+        self.tasks.values().all(|task| task.complete())
+    }
+
+    fn completion_status(&self) -> (i32, i32) {
+        unimplemented!()
+    }
+}
+
+impl CompletionStatus for Task {
+    fn complete(&self) -> bool {
+        self.finished
+            && match &self.subtasks {
+                Some(subtasks) => subtasks.values().all(|task| task.complete()),
+                None => true,
+            }
+    }
+
+    fn completion_status(&self) -> (i32, i32) {
+        let subtask_status = match &self.subtasks {
+            Some(subtasks) => {
+                let mut x = (0, 0);
+                subtasks
+                    .values()
+                    .map(|task| task.completion_status())
+                    .for_each(|status| {
+                        x.0 += status.0;
+                        x.1 += status.1;
+                    });
+                x
+            }
+            None => (0, 0),
+        };
+        (
+            subtask_status.0 + if self.finished { 1 } else { 0 },
+            subtask_status.1 + 1,
+        )
+    }
+}
+
+impl FlattenTasks for ToDo {
+    fn flatten_tasks(&self) -> Vec<Task> {
+        self.tasks
+            .values()
+            .map(|task| task.flatten_tasks())
+            .flatten()
             .collect()
     }
 }
@@ -156,8 +254,31 @@ impl Task {
             .insert(subtask.uuid, Box::new(subtask));
     }
 
+    pub fn remove_subtask_task(&mut self, id: Uuid) -> Option<Task> {
+        match self.subtasks.as_mut() {
+            Some(subtasks) => subtasks.remove(&id).map(|task_box| (&*task_box).clone()),
+            None => None,
+        }
+    }
+
     pub fn get_uuid(&self) -> Uuid {
         self.uuid
+    }
+
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn get_desc(&self) -> String {
+        self.desc.clone()
+    }
+
+    pub fn get_due_date(&self) -> Option<DateTime<Local>> {
+        self.due_date.clone()
+    }
+
+    pub fn get_priority(&self) -> Option<Priority> {
+        self.priority.clone()
     }
 }
 
@@ -172,6 +293,47 @@ impl EstTime for Task {
     }
 }
 
+impl FlattenTasks for Task {
+    fn flatten_tasks(&self) -> Vec<Task> {
+        let mut ret = Vec::new();
+        let tmp = Task {
+            name: self.name.clone(),
+            desc: self.desc.clone(),
+            finished: self.finished,
+            subtasks: None,
+            due_date: self.due_date.clone(),
+            _est_time: self._est_time.clone(),
+            priority: self.priority.clone(),
+            uuid: self.uuid.clone(),
+        };
+        ret.push(tmp);
+        let subtasks = match &self.subtasks {
+            Some(st) => {
+                let top_lvl = st.values().map(|task| Task {
+                    name: task.name.clone(),
+                    desc: task.desc.clone(),
+                    finished: task.finished,
+                    subtasks: None,
+                    due_date: task.due_date.clone(),
+                    _est_time: task._est_time.clone(),
+                    priority: task.priority.clone(),
+                    uuid: task.uuid.clone(),
+                });
+                let children = st
+                    .values()
+                    .map(|children_st_box| children_st_box.flatten_tasks())
+                    .flatten();
+                top_lvl.chain(children).collect()
+            }
+            None => Vec::new(),
+        };
+        for x in subtasks.into_iter() {
+            ret.push(x);
+        }
+        ret
+    }
+}
+
 impl Priority {
     pub fn val(&self) -> i32 {
         match self {
@@ -179,6 +341,21 @@ impl Priority {
             Priority::Medium => 2,
             Priority::High => 3,
             Priority::Extreme => 4,
+        }
+    }
+}
+
+impl FromStr for Priority {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match &(s.to_ascii_lowercase())[..] {
+            "low" => Ok(Priority::Low),
+            "medium" => Ok(Priority::Medium),
+            "mid" => Ok(Priority::Medium),
+            "high" => Ok(Priority::High),
+            "extreme" => Ok(Priority::Extreme),
+            _ => Err("Invalid Priority"),
         }
     }
 }
@@ -248,7 +425,6 @@ mod test {
 
     use super::{EstTime, Priority, Task, ToDo};
     use std::boxed::Box;
-    use std::rc::Box;
 
     #[test]
     fn task_sort_priority() {
