@@ -1,0 +1,20 @@
+# TODO Change to release
+[tasks.build_pi]
+description = "Build the project for the raspberry pi"
+command = "cargo"
+args = ["build", "--target=armv7-unknown-linux-gnueabihf", "--features=vendored"]
+
+[tasks.deploy]
+description = "Deploys the project to the raspberry pi"
+dependencies = ["build_pi"]
+script = [
+    "echo Creating Zip File",
+    "zip -r desktopper.zip resources/ target/armv7-unknown-linux-gnueabihf/debug/desktopper target/armv7-unknown-linux-gnueabihf/debug/api_server",
+    "echo Copying zip file",
+    "scp desktopper.zip pi@desktopper:~/",
+    "echo Installing on target",
+    "ssh pi@desktopper \"unzip desktopper.zip -d desktopper;cd desktopper/resources; chmod +x target_deploy.sh; sudo ./target_deploy.sh; cd ~; rm -rf desktopper*\"",
+    "echo Cleaning up",
+    "rm -f desktopper.zip"
+]
+

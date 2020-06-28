@@ -1,0 +1,12 @@
+[Unit]
+Description=Desktop Task monitor/display
+
+[Service]
+# The dummy program will exit
+Type=oneshot
+ExecStart=/bin/true
+# Keep this around after the dummy exits
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

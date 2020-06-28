@@ -1,5 +1,5 @@
 [package]
-name = "wall_disp"
+name = "desktopper"
 version = "0.1.0"
 authors = ["Jackson <jrmoffet@gmail.com>"]
 edition = "2018"
@@ -19,6 +19,11 @@ log = "^0.4"
 pretty_env_logger = "^0.4"
 signal-hook = {version = "0.1.15", features = ["tokio-support"]}
 openssl-sys = "*"
+gpio_lcd = {git = "https://github.com/jrmo14/gpio_lcd"}
+clap = "2.33.1"
+gpio-cdev = "0.3.0"
+nix = "0.17.0"
+anyhow = "1.0.31"
 
 [features]
 vendored = ["openssl-sys/vendored"]

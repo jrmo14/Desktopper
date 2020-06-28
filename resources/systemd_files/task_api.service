@@ -1,0 +1,12 @@
+[Unit]
+Description=Webserver hosting task api
+PartOf=desktopper.service
+After=desktopper.service
+
+[Service]
+# Start the component
+ExecStart=/usr/local/bin/api_server
+Restart=on-failure
+
+[Install]
+WantedBy=desktopper.service

@@ -77,12 +77,12 @@ impl ToDo {
                 parent.add_task(task.clone());
                 debug!("Parent: {:?}", parent);
                 let mut new_path = path.clone();
-                new_path.push(task.uuid.clone());
-                self.paths.insert(task.uuid.clone(), new_path);
+                new_path.push(task.uuid);
+                self.paths.insert(task.uuid, new_path);
             }
             None => {
-                self.tasks.insert(task.uuid.clone(), Box::new(task.clone()));
-                self.paths.insert(task.uuid.clone(), vec![task.uuid]);
+                self.tasks.insert(task.uuid, Box::new(task.clone()));
+                self.paths.insert(task.uuid, vec![task.uuid]);
             }
         }
         debug!("{:?}", self);
