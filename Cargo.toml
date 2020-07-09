@@ -24,6 +24,7 @@ clap = "2.33.1"
 gpio-cdev = "0.3.0"
 nix = "0.17.0"
 anyhow = "1.0.31"
+toml = "0.5.6"
 
 [features]
 vendored = ["openssl-sys/vendored"]

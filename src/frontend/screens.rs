@@ -191,7 +191,7 @@ impl Screen for ClockDisplay {
     }
 
     fn get_tick(&self) -> Option<Duration> {
-        Some(Duration::from_millis(250))
+        Some(Duration::from_secs(1))
     }
 
     fn tick(&mut self, lcd: &mut ThreadedLcd) {

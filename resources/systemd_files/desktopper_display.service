@@ -5,7 +5,7 @@ After=desktopper.service
 After=task_api.service
 
 [Service]
-ExecStart=/usr/local/bin/desktopper --rs 14 --enable 15 --data_pins 6 13 19 26 255 255 255 255 -f --cycle_button 17 --mode_button 27 --fn_button_0 22 --fn_button_1 23 --fn_button_2 24
+ExecStart=/usr/local/bin/desktopper -c /etc/desktopper/config.toml
 Restart=on-failure
 
 [Install]

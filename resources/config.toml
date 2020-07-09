@@ -1,0 +1,20 @@
+[gpio]
+chip_name = "/dev/gpiochip0"
+
+    [gpio.display]
+    rs = 14
+    enable = 15
+    data = [6, 13, 19, 26, 255, 255, 255, 255]
+    rw = 255
+    four_bit = true
+
+    [gpio.buttons]
+    mode = 27
+    cycle = 17
+    fn0 = 22
+    fn1 = 23
+    fn2 = 24
+
+[tasks]
+host = "localhost"
+port = "3030"

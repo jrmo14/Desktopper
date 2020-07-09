@@ -16,6 +16,51 @@ use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::time::Instant;
 
+mod config {
+    use serde::Deserialize;
+    use std::io::BufReader;
+
+    #[derive(Deserialize)]
+    pub struct Config {
+        pub gpio: GPIO,
+        pub tasks: Tasks,
+    }
+
+    #[derive(Deserialize)]
+    pub struct GPIO {
+        pub chip_name: String,
+        pub display: DisplayConfig,
+        pub buttons: ButtonConfig,
+    }
+    #[derive(Deserialize)]
+    pub struct DisplayConfig {
+        pub rs: u8,
+        pub enable: u8,
+        pub data: [u8; 8],
+        pub rw: u8,
+        pub four_bit: bool,
+    }
+
+    #[derive(Deserialize)]
+    pub struct ButtonConfig {
+        pub mode: u32,
+        pub cycle: u32,
+        pub fn0: u32,
+        pub fn1: u32,
+        pub fn2: u32,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Tasks {
+        pub host: String,
+        pub port: String,
+    }
+
+    pub fn parse_file(file_location: &str) -> Config {
+        toml::from_str(std::fs::read_to_string(file_location).unwrap().as_str()).unwrap()
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     // Always enable some form of logging
     if std::env::var_os("RUST_LOG").is_none() {
@@ -24,142 +69,33 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     let matches = App::new("Desktopper")
         .arg(
-            Arg::with_name("api_host")
-                .short("a")
-                .long("api_host")
-                .value_name("API_HOST")
-                .default_value("localhost")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("api_port")
-                .short("p")
-                .long("api_port")
-                .long("API_PORT")
-                .default_value("3030")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("chip")
+            Arg::with_name("config_file")
                 .short("c")
-                .long("chip")
-                .value_name("CHIP")
-                .help("Sets the chip to use for GPIO")
-                .default_value("/dev/gpiochip0")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("four_bit_mode")
-                .short("f")
-                .long("mode")
-                .help("Sets the bit mode for the LCD panel")
-                .takes_value(false),
-        )
-        .arg(
-            Arg::with_name("rs")
-                .long("rs")
-                .value_name("RS_PIN")
-                .help("The pin to use for rs")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("rw")
-                .long("rw")
-                .value_name("RW_PIN")
-                .help("The pin to use for rw")
-                .default_value("255")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("enable")
-                .short("e")
-                .long("enable")
-                .value_name("ENABLE_PIN")
-                .help("The pin to use for enable")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("data_pins")
-                .short("d")
-                .long("data_pins")
-                .value_name("DATA_PINS")
-                .help("The 4/8 data pins")
-                .multiple(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("mode_button")
-                .short("m")
-                .long("mode_button")
-                .value_name("MODE_PIN")
-                .help("The pin to change/reset the mode of the system")
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("cycle_button")
-                .long("cycle_button")
-                .value_name("CYCLE_PIN")
-                .help("The pin to cycle values in the system")
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("fn_button_0")
-                .long("fn_button_0")
-                .value_name("BUTTON_0")
-                .help("THe pin to use a function button 0")
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("fn_button_1")
-                .long("fn_button_1")
-                .value_name("BUTTON_1")
-                .help("THe pin to use a function button 1")
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("fn_button_2")
-                .long("fn_button_2")
-                .value_name("BUTTON_2")
-                .help("THe pin to use a function button 2")
-                .required(true),
+                .long("config")
+                .default_value("/etc/desktopper/config.toml"),
         )
         .get_matches();
 
-    let mut chip = Chip::new(matches.value_of("chip").unwrap())?;
+    let cfg = config::parse_file(matches.value_of("config_file").unwrap());
 
-    let data_pins_res: Vec<Result<u8, std::num::ParseIntError>> = matches
-        .values_of("data_pins")
-        .unwrap()
-        .map(|p| u8::from_str(p))
-        .collect();
-
-    let mut data_pins = Vec::new();
-
-    if data_pins_res.len() != 8 && data_pins_res.iter().any(|res| res.is_err()) {
-        return Err(anyhow!("Invalid number of data_pins, must be 4 or 8"));
-    }
-    data_pins_res.iter().for_each(|pin_res| {
-        data_pins.push(pin_res.as_ref().unwrap());
-    });
+    let mut chip = Chip::new(cfg.gpio.chip_name.clone())?;
 
     let lcd_driver = LcdDriver::new(
         16,
         2,
-        matches.value_of("chip").unwrap(),
-        true,
-        u8::from_str(matches.value_of("rs").unwrap()).unwrap(),
-        u8::from_str(matches.value_of("rw").unwrap()).unwrap(),
-        u8::from_str(matches.value_of("enable").unwrap()).unwrap(),
-        *data_pins[0],
-        *data_pins[1],
-        *data_pins[2],
-        *data_pins[3],
-        *data_pins[4],
-        *data_pins[5],
-        *data_pins[6],
-        *data_pins[7],
+        cfg.gpio.chip_name.as_str(),
+        cfg.gpio.display.four_bit,
+        cfg.gpio.display.rs,
+        cfg.gpio.display.rw,
+        cfg.gpio.display.enable,
+        cfg.gpio.display.data[0],
+        cfg.gpio.display.data[1],
+        cfg.gpio.display.data[2],
+        cfg.gpio.display.data[3],
+        cfg.gpio.display.data[4],
+        cfg.gpio.display.data[5],
+        cfg.gpio.display.data[6],
+        cfg.gpio.display.data[7],
     )?;
 
     let scheduled_lcd = ThreadedLcd::with_driver(lcd_driver);
@@ -169,24 +105,24 @@ fn main() -> anyhow::Result<()> {
     let mut input_handler = InputHandler::new(
         &mut chip,
         tx,
-        u32::from_str(matches.value_of("mode_button").unwrap()).unwrap(),
-        u32::from_str(matches.value_of("cycle_button").unwrap()).unwrap(),
-        u32::from_str(matches.value_of("fn_button_0").unwrap()).unwrap(),
-        u32::from_str(matches.value_of("fn_button_1").unwrap()).unwrap(),
-        u32::from_str(matches.value_of("fn_button_2").unwrap()).unwrap(),
+        cfg.gpio.buttons.mode,
+        cfg.gpio.buttons.cycle,
+        cfg.gpio.buttons.fn0,
+        cfg.gpio.buttons.fn1,
+        cfg.gpio.buttons.fn2,
     );
 
     input_handler.start();
 
     let mut display_state = ScreenState::new(scheduled_lcd);
+    display_state.add(Box::new(ClockDisplay::new()));
     display_state.add(Box::new(TaskDisplay::new(
-        matches.value_of("api_host").unwrap(),
-        matches.value_of("api_port").unwrap(),
+        cfg.tasks.host.as_str(),
+        cfg.tasks.port.as_str(),
     )));
 
     display_state.add(Box::new(TestDisplay {}));
-    display_state.add(Box::new(ClockDisplay::new()));
-
+    display_state.next();
     let mut button_state: Option<Buttons>;
 
     loop {
