@@ -5,143 +5,22 @@ extern crate pretty_env_logger;
 extern crate anyhow;
 
 use clap::{App, Arg};
-use desktopper::tasks::*;
+use desktopper::frontend::buttons::{Buttons, InputHandler};
+use desktopper::frontend::screens::*;
+use gpio_cdev::EventType::FallingEdge;
 use gpio_cdev::*;
 use gpio_lcd::lcd::LcdDriver;
-use gpio_lcd::scheduler::{Job, ThreadedLcd};
-use nix::poll::{poll, PollFd, PollFlags};
-use reqwest::blocking::Client;
-use std::os::unix::io::AsRawFd;
+use gpio_lcd::scheduler::ThreadedLcd;
 use std::str::FromStr;
-use std::time::Duration;
-use uuid::Uuid;
-
-struct State {
-    displays: Vec<Box<dyn Display>>,
-    idx: usize,
-}
-
-impl State {
-    pub fn new() -> Self {
-        State {
-            displays: Vec::new(),
-            idx: 0,
-        }
-    }
-}
-
-trait Display {
-    fn first_load(&mut self, lcd: &mut ThreadedLcd);
-    fn update_display(
-        &mut self,
-        lcd: &mut ThreadedLcd,
-        cycle_btn: bool,
-        btn_0: bool,
-        btn_1: bool,
-        btn_2: bool,
-    );
-}
-
-struct TaskDisplay {
-    client: Client,
-    cur_id: Option<Uuid>,
-    idx: usize,
-    tasks: Vec<Task>,
-    api_root: String,
-}
-
-impl TaskDisplay {
-    pub fn new(api_host: &str, api_port: &str) -> Self {
-        let client = Client::new();
-        let api_root = format!("http://{}:{}", api_host, api_port);
-        let url = format!("{}/todo/get", &api_root);
-        let resp_str = client.get(&url).send().unwrap().text().unwrap();
-        let tasks = serde_json::from_str(&resp_str).unwrap();
-        TaskDisplay {
-            client,
-            cur_id: None,
-            idx: 0,
-            tasks,
-            api_root,
-        }
-    }
-    pub fn update_tasks(&mut self) {
-        let url = format!(
-            "{}/todo/get/{}",
-            &self.api_root,
-            match self.cur_id {
-                Some(id) => format!("?id={}", id),
-                None => String::new(),
-            }
-        );
-        let resp = self.client.get(&url).send().unwrap().text().unwrap();
-        self.tasks = serde_json::from_str(&resp).unwrap();
-    }
-}
-
-impl Display for TaskDisplay {
-    fn first_load(&mut self, lcd: &mut ThreadedLcd) {
-        lcd.clear_jobs();
-        self.update_tasks();
-        if !self.tasks.is_empty() {
-            let top = self.tasks[self.idx].get_name();
-            let bottom = self.tasks[self.idx].get_desc();
-            lcd.clear_jobs();
-            lcd.add_job(Job::new(top.as_str(), 0, Some(Duration::from_millis(250))));
-            lcd.add_job(Job::new(
-                bottom.as_str(),
-                1,
-                Some(Duration::from_millis(250)),
-            ));
-        }
-    }
-
-    fn update_display(
-        &mut self,
-        lcd: &mut ThreadedLcd,
-        cycle_btn: bool,
-        _btn_0: bool,
-        _btn_1: bool,
-        _btn_2: bool,
-    ) {
-        if cycle_btn {
-            self.idx = (self.idx + 1) % self.tasks.len();
-            let top = self.tasks[self.idx].get_name();
-            let bottom = self.tasks[self.idx].get_desc();
-            lcd.clear_jobs();
-            lcd.add_job(Job::new(top.as_str(), 0, Some(Duration::from_millis(250))));
-            lcd.add_job(Job::new(
-                bottom.as_str(),
-                1,
-                Some(Duration::from_millis(250)),
-            ));
-        }
-    }
-}
-
-struct TestDisplay {}
-
-impl Display for TestDisplay {
-    fn first_load(&mut self, lcd: &mut ThreadedLcd) {
-        lcd.clear_jobs();
-        lcd.clear_row(0);
-        lcd.clear_row(1);
-        lcd.add_job(Job::new("HELLO", 0, None));
-    }
-
-    fn update_display(
-        &mut self,
-        lcd: &mut ThreadedLcd,
-        _cycle_btn: bool,
-        _btn_0: bool,
-        _btn_1: bool,
-        _btn_2: bool,
-    ) {
-        self.first_load(lcd)
-    }
-}
+use std::sync::mpsc;
+use std::sync::mpsc::TryRecvError;
+use std::time::Instant;
 
 fn main() -> anyhow::Result<()> {
+    // Always enable some form of logging
+    if std::env::var_os("RUST_LOG").is_none() {
+        std::env::set_var("RUST_LOG", "info");
+    }
     pretty_env_logger::init();
     let matches = App::new("Desktopper")
         .arg(
@@ -283,106 +162,72 @@ fn main() -> anyhow::Result<()> {
         *data_pins[7],
     )?;
 
-    let mut scheduled_lcd = ThreadedLcd::with_driver(lcd_driver);
+    let scheduled_lcd = ThreadedLcd::with_driver(lcd_driver);
 
-    let mut button_fds = Vec::new();
-    let mut event_handles = Vec::new();
+    let (tx, rx) = mpsc::channel();
 
-    create_poll_fd(
+    let mut input_handler = InputHandler::new(
         &mut chip,
+        tx,
         u32::from_str(matches.value_of("mode_button").unwrap()).unwrap(),
-        &mut button_fds,
-        &mut event_handles,
-    );
-
-    create_poll_fd(
-        &mut chip,
         u32::from_str(matches.value_of("cycle_button").unwrap()).unwrap(),
-        &mut button_fds,
-        &mut event_handles,
-    );
-
-    create_poll_fd(
-        &mut chip,
         u32::from_str(matches.value_of("fn_button_0").unwrap()).unwrap(),
-        &mut button_fds,
-        &mut event_handles,
-    );
-
-    create_poll_fd(
-        &mut chip,
         u32::from_str(matches.value_of("fn_button_1").unwrap()).unwrap(),
-        &mut button_fds,
-        &mut event_handles,
-    );
-
-    create_poll_fd(
-        &mut chip,
         u32::from_str(matches.value_of("fn_button_2").unwrap()).unwrap(),
-        &mut button_fds,
-        &mut event_handles,
     );
 
-    let mut state = State::new();
-    state.displays.push(Box::new(TaskDisplay::new(
+    input_handler.start();
+
+    let mut display_state = ScreenState::new(scheduled_lcd);
+    display_state.add(Box::new(TaskDisplay::new(
         matches.value_of("api_host").unwrap(),
         matches.value_of("api_port").unwrap(),
     )));
-    state.displays.push(Box::new(TestDisplay {}));
-    // TODO Add debouncing somehow
+
+    display_state.add(Box::new(TestDisplay {}));
+    display_state.add(Box::new(ClockDisplay::new()));
+
+    let mut button_state: Option<Buttons>;
+
     loop {
-        if poll(&mut button_fds, -1)? == 0 {
-            println!("Timeout?!?!?");
-        } else {
-            for i in 0..button_fds.len() {
-                if let Some(revts) = button_fds[i].revents() {
-                    let h = &mut event_handles[i];
-                    if revts.contains(PollFlags::POLLIN) {
-                        let event = h.get_event()?;
-                        let offset = h.line().offset();
-                        if offset == 27 {
-                            info!("Changing display");
-                            state.idx = (state.idx + 1) % state.displays.len();
-                            state.displays[state.idx].first_load(&mut scheduled_lcd)
-                        } else {
-                            info!("Updating display state");
-                            let cycle_state =
-                                event.event_type() == EventType::FallingEdge && offset == 27;
-                            state.displays[state.idx].update_display(
-                                &mut scheduled_lcd,
-                                cycle_state,
-                                false,
-                                false,
-                                false,
-                            );
+        if let Some(tick_dur) = display_state.cur().get_tick() {
+            let mut end = Instant::now().checked_add(tick_dur).unwrap();
+            loop {
+                button_state = match rx.try_recv() {
+                    Ok(buttons) => Some(buttons),
+                    Err(e) => {
+                        if e == TryRecvError::Disconnected {
+                            error!("Input handler receive failed with: {}", e);
                         }
-                    } else if revts.contains(PollFlags::POLLPRI) {
-                        println!("[{}] Got a POLLPRI", h.line().offset());
+                        None
                     }
+                };
+                if button_state.is_some() {
+                    break;
+                }
+                if end <= Instant::now() {
+                    display_state.tick();
+                    end = Instant::now()
+                        .checked_add(display_state.cur().get_tick().unwrap())
+                        .unwrap();
+                }
+            }
+        } else {
+            button_state = match rx.recv() {
+                Ok(buttons) => Some(buttons),
+                Err(e) => {
+                    error!("Input handler receive failed with: {}", e);
+                    None
                 }
             }
         }
+        if let Some(buttons) = button_state {
+            if buttons.mode.state == Some(FallingEdge) {
+                display_state.next()
+            } else {
+                display_state.update(buttons)
+            }
+        }
     }
-}
-
-fn create_poll_fd(
-    chip: &mut Chip,
-    line_offset: u32,
-    button_fds: &mut Vec<PollFd>,
-    event_handles: &mut Vec<LineEventHandle>,
-) {
-    let line_handle = chip
-        .get_line(line_offset)
-        .unwrap()
-        .events(
-            LineRequestFlags::INPUT,
-            EventRequestFlags::BOTH_EDGES,
-            "desktopper",
-        )
-        .unwrap();
-    button_fds.push(PollFd::new(
-        (&line_handle).as_raw_fd(),
-        PollFlags::POLLIN | PollFlags::POLLPRI,
-    ));
-    event_handles.push(line_handle);
+    Ok(())
 }

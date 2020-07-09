@@ -43,7 +43,7 @@ mod data_model {
 
     use parking_lot::RwLock;
 
-    use desktopper::tasks::ToDo;
+    use desktopper::backend::tasks::ToDo;
 
     #[derive(Clone)]
     pub struct DataStore {
@@ -69,7 +69,7 @@ mod filters {
     use warp::Filter;
 
     use crate::{handlers, DataStore};
-    use desktopper::tasks::{Priority, Task};
+    use desktopper::backend::tasks::{Priority, Task};
 
     pub fn task_master(
         storage: DataStore,
@@ -242,7 +242,7 @@ mod handlers {
     use crate::data_model::DataStore;
     use crate::SAVE_FILE_PATH;
     use chrono::{DateTime, Local};
-    use desktopper::tasks::{CompletionStatus, EstTime, FlattenTasks, Priority, Task};
+    use desktopper::backend::tasks::{CompletionStatus, EstTime, FlattenTasks, Priority, Task};
     use std::ops::Deref;
 
     pub async fn add_task(
