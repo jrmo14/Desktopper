@@ -1,0 +1,31 @@
+# These are based on the raspi that I use,
+# you should (feel free to) change these to match your needs
+[gpio]
+chip_name = "/dev/gpiochip0"
+
+    [gpio.display]
+    rs = 14
+    enable = 15
+    data = [6, 13, 19, 26, 255, 255, 255, 255]
+    rw = 255
+    four_bit = true
+
+    [gpio.buttons]
+    mode = 27
+    cycle = 17
+    fn0 = 22
+    fn1 = 23
+    fn2 = 24
+
+[tasks]
+host = "localhost"
+port = "3030"
+
+# This section is optional
+# It requires a Spotify developer account and application
+# in order to obtain a client_id and secret
+# You can find the details to do so here https://developer.spotify.com/documentation/web-api/quick-start/
+[spotify_auth]
+id = "your_client_id_here"
+secret = "your_client_secret_here"
+redirect = "your_authentication_redirect_uri_here"
