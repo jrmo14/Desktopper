@@ -5,25 +5,23 @@ extern crate pretty_env_logger;
 extern crate anyhow;
 
 use clap::{App, Arg};
-use desktopper::frontend::buttons::{Buttons, InputHandler};
-use desktopper::frontend::screens::*;
+use desktopper::frontend::*;
 use gpio_cdev::EventType::FallingEdge;
 use gpio_cdev::*;
 use gpio_lcd::lcd::LcdDriver;
 use gpio_lcd::scheduler::ThreadedLcd;
-use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::time::Instant;
 
 mod config {
     use serde::Deserialize;
-    use std::io::BufReader;
 
     #[derive(Deserialize)]
     pub struct Config {
         pub gpio: GPIO,
         pub tasks: Tasks,
+        pub spotify_auth: Option<SpotifyAuth>,
     }
 
     #[derive(Deserialize)]
@@ -32,6 +30,7 @@ mod config {
         pub display: DisplayConfig,
         pub buttons: ButtonConfig,
     }
+
     #[derive(Deserialize)]
     pub struct DisplayConfig {
         pub rs: u8,
@@ -54,6 +53,13 @@ mod config {
     pub struct Tasks {
         pub host: String,
         pub port: String,
+    }
+
+    #[derive(Deserialize)]
+    pub struct SpotifyAuth {
+        pub id: String,
+        pub secret: String,
+        pub redirect: String,
     }
 
     pub fn parse_file(file_location: &str) -> Config {
@@ -114,14 +120,14 @@ fn main() -> anyhow::Result<()> {
 
     input_handler.start();
 
-    let mut display_state = ScreenState::new(scheduled_lcd);
-    display_state.add(Box::new(ClockDisplay::new()));
-    display_state.add(Box::new(TaskDisplay::new(
+    let mut display_state = DisplayState::new(scheduled_lcd);
+    display_state.add(Box::new(ClockScreen::new()));
+    display_state.add(Box::new(TaskScreen::new(
         cfg.tasks.host.as_str(),
         cfg.tasks.port.as_str(),
     )));
 
-    display_state.add(Box::new(TestDisplay {}));
+    display_state.add(Box::new(TestScreen {}));
     display_state.next();
     let mut button_state: Option<Buttons>;
 

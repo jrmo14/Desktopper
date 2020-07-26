@@ -1,4 +1,4 @@
-use gpio_cdev::EventType::FallingEdge;
+use gpio_cdev::EventType::{FallingEdge, RisingEdge};
 use gpio_cdev::{Chip, EventRequestFlags, EventType, LineEventHandle, LineRequestFlags};
 use nix::poll::{poll, PollFd, PollFlags};
 use parking_lot::Mutex;
@@ -8,6 +8,10 @@ use std::os::unix::io::AsRawFd;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread::{spawn, JoinHandle};
+
+pub const RELEASED: Option<EventType> = Some(FallingEdge);
+pub const HELD: Option<EventType> = Some(RisingEdge);
+pub const OPEN: Option<EventType> = None;
 
 #[derive(Clone)]
 pub struct Buttons {

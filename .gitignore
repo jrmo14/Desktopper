@@ -4,3 +4,4 @@ src/demo.rs
 todo.json
 .cargo
 desktopper.zip
+resources/config.toml

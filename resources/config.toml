@@ -18,3 +18,8 @@ chip_name = "/dev/gpiochip0"
 [tasks]
 host = "localhost"
 port = "3030"
+
+[spotify_auth]
+id = "client_id_here"
+secret = "client_secret_here"
+redirect = "client_redirect_here"
