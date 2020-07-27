@@ -8,6 +8,7 @@ mkdir -p /etc/desktopper
 mv config.toml /etc/desktopper
 mv $BIN_DIR/api_server /usr/local/bin/
 mv $BIN_DIR/desktopper /usr/local/bin/
+killall desktopper_display
 echo "Reloading service files"
 systemctl daemon-reload
 echo "Starting service"

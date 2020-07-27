@@ -5,6 +5,7 @@ extern crate pretty_env_logger;
 extern crate anyhow;
 
 use clap::{App, Arg};
+use desktopper::frontend::screens::music::SpotifyScreen;
 use desktopper::frontend::*;
 use gpio_cdev::EventType::FallingEdge;
 use gpio_cdev::*;
@@ -126,6 +127,21 @@ fn main() -> anyhow::Result<()> {
         cfg.tasks.host.as_str(),
         cfg.tasks.port.as_str(),
     )));
+
+    match cfg.spotify_auth {
+        Some(auth) => {
+            let screen = SpotifyScreen::new(
+                auth.id.as_str(),
+                auth.secret.as_str(),
+                auth.redirect.as_str(),
+            );
+            match screen {
+                Ok(s) => display_state.add(Box::new(s)),
+                Err(e) => error!("{}", e),
+            }
+        }
+        None => {}
+    }
 
     display_state.add(Box::new(TestScreen {}));
     display_state.next();

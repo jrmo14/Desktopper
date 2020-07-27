@@ -51,4 +51,8 @@ impl Screen for ClockScreen {
         }
         lcd.add_job(Job::new(time.as_str(), 1, None));
     }
+
+    fn get_name(&self) -> String {
+        "Clock".to_string()
+    }
 }

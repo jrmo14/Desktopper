@@ -20,6 +20,8 @@ pub trait Screen {
     }
     /// The Screen's tick action, update contents without button input i.e. a clock or music status, doesn't do anything by default
     fn tick(&mut self, lcd: &mut ThreadedLcd) {}
+
+    fn get_name(&self) -> String;
 }
 
 /// Keeps track of the Screens that will be put on the Display
@@ -47,7 +49,8 @@ impl DisplayState {
     /// Select the next Screen for display
     pub fn next(&mut self) {
         self.idx = (self.idx + 1) % self.screens.len();
-        self.screens[self.idx].first_load(&mut self.lcd)
+        self.screens[self.idx].first_load(&mut self.lcd);
+        info!("Now showing {}", self.screens[self.idx].get_name());
     }
 
     /// Returns the Screen currently on display
@@ -80,5 +83,9 @@ impl Screen for TestScreen {
 
     fn update_screen(&mut self, lcd: &mut ThreadedLcd, _buttons: Buttons) {
         self.first_load(lcd)
+    }
+
+    fn get_name(&self) -> String {
+        "Test".to_string()
     }
 }

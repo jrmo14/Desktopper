@@ -323,4 +323,8 @@ impl Screen for TaskScreen {
             }
         }
     }
+
+    fn get_name(&self) -> String {
+        "Tasks".to_string()
+    }
 }
