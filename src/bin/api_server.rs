@@ -11,7 +11,8 @@ use warp::Filter;
 
 use crate::data_model::DataStore;
 
-const SAVE_FILE_PATH: &str = "todo.json";
+// TODO make into a user input
+const SAVE_FILE_PATH: &str = "/etc/desktopper/todo.json";
 
 #[tokio::main]
 async fn main() {
@@ -25,17 +26,19 @@ async fn main() {
     let data_store = DataStore::new();
     match File::open(SAVE_FILE_PATH) {
         Ok(file) => {
-            info!("Reading from file");
+            info!("Reading from {} file", SAVE_FILE_PATH);
             // TODO: Fix deserialization --> might want to load just the hashmap, and rebuild the overdue and category segments
             match serde_json::from_reader(BufReader::new(file)) {
                 Ok(todo) => {
                     info!("Loaded todo from {}", SAVE_FILE_PATH);
                     *data_store.todo_list.write().deref_mut() = todo;
                 }
-                Err(_) => error!("Unable to load from storage file, invalid data"),
+                Err(_) => {
+                    warn!("Unable to load from storage file, invalid data, will make a new one")
+                }
             }
         }
-        Err(err) => error!("{}", err),
+        Err(_) => warn!("Unable to open save file, will create new one."),
     }
     let task_routes = filters::task_master(data_store);
     let todo_routes = task_routes.with(warp::log("todo"));
@@ -48,7 +51,7 @@ mod data_model {
     use parking_lot::RwLock;
 
     use chrono::{DateTime, Local};
-    use desktopper::backend::tasks::{CompletionStatus, ToDo};
+    use desktopper::backend::{CompletionStatus, ToDo};
     use tokio::task::JoinHandle;
     use tokio::{task, time};
     use uuid::Uuid;
@@ -75,14 +78,10 @@ mod data_model {
                 let dur = due_date.signed_duration_since(Local::now());
                 time::delay_for(dur.to_std().unwrap()).await;
                 let mut lock = task_todo_list.write();
-                match lock.get_task(id) {
-                    // Task may have been removed
-                    Some(task) => {
-                        if !task.complete() {
-                            lock.set_overdue(id).unwrap();
-                        }
+                if let Some(task) = lock.get_task(id) {
+                    if !task.complete() {
+                        lock.set_overdue(id).unwrap();
                     }
-                    None => {} // Nothing happens because the task has been removed
                 }
             })
         }
@@ -116,7 +115,7 @@ mod filters {
     use warp::Filter;
 
     use crate::{handlers, DataStore};
-    use desktopper::backend::tasks::{Priority, Task};
+    use desktopper::backend::{Priority, Task};
 
     pub fn task_master(
         storage: DataStore,
@@ -128,6 +127,7 @@ mod filters {
                 .or(estimate_time(storage.clone()))
                 .or(complete(storage.clone()))
                 .or(completion_status(storage.clone()))
+                .or(mark_finished(storage.clone()))
                 .or(search(storage)),
         )
     }
@@ -304,7 +304,7 @@ mod handlers {
     use crate::data_model::DataStore;
     use crate::SAVE_FILE_PATH;
     use chrono::{DateTime, Local};
-    use desktopper::backend::tasks::{CompletionStatus, EstTime, Priority, Task};
+    use desktopper::backend::{CompletionStatus, EstTime, Priority, Task};
     use std::ops::Deref;
 
     pub async fn add_task(
@@ -316,7 +316,10 @@ mod handlers {
             store.schedule_overdue_check(task.get_id(), task.get_due_date().unwrap());
         }
         if task.get_repeats().is_some() {
-            store.schedule_repeats(task.get_id(), task.get_due_date().unwrap());
+            store.schedule_repeats(
+                task.get_id(),
+                task.get_due_date().unwrap_or_else(Local::now),
+            );
         }
         update_file(store);
 

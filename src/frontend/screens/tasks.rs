@@ -1,13 +1,10 @@
 use std::time::Duration;
 
-use chrono::prelude::Local;
-use chrono::Date;
-use gpio_cdev::EventType::{self, FallingEdge, RisingEdge};
 use gpio_lcd::scheduler::{Job, ThreadedLcd};
 use reqwest::blocking::Client;
 use uuid::Uuid;
 
-use crate::backend::tasks::{CompletionStatus, Task, ToDo};
+use crate::backend::{CompletionStatus, Task, ToDo};
 use crate::frontend::buttons::{Buttons, HELD, OPEN, RELEASED};
 use crate::frontend::screens::Screen;
 
@@ -155,16 +152,14 @@ impl Screen for TaskScreen {
                         self.cur_category = Some(categories[self.idx].clone());
                         self.idx = 0;
                         self.view_flag = TaskScreenState::CategoryTasks.val();
-                    } else {
-                        if buttons.f0.state == RELEASED {
-                            self.idx = if self.idx == 0 {
-                                categories.len() - 1
-                            } else {
-                                self.idx - 1
-                            };
-                        } else if buttons.f2.state == RELEASED {
-                            self.idx = (self.idx + 1) % categories.len();
-                        }
+                    } else if buttons.f0.state == RELEASED {
+                        self.idx = if self.idx == 0 {
+                            categories.len() - 1
+                        } else {
+                            self.idx - 1
+                        };
+                    } else if buttons.f2.state == RELEASED {
+                        self.idx = (self.idx + 1) % categories.len();
                     }
                 }
                 TaskScreenState::CategoryTasks => {

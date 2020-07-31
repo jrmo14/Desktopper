@@ -19,7 +19,7 @@ pub trait Screen {
         None
     }
     /// The Screen's tick action, update contents without button input i.e. a clock or music status, doesn't do anything by default
-    fn tick(&mut self, lcd: &mut ThreadedLcd) {}
+    fn tick(&mut self, _lcd: &mut ThreadedLcd) {}
 
     fn get_name(&self) -> String;
 }

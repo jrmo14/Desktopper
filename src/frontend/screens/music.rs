@@ -4,10 +4,10 @@ use gpio_lcd::scheduler::{Job, ThreadedLcd};
 use rspotify::blocking::client::Spotify;
 use rspotify::blocking::oauth2::{SpotifyClientCredentials, SpotifyOAuth};
 use rspotify::blocking::util::get_token;
-use rspotify::model::device::Device;
 use rspotify::model::offset::Offset;
 use rspotify::model::PlayingItem;
 use rspotify::senum::AdditionalType;
+use std::path::PathBuf;
 use std::time::Instant;
 use tokio::time::Duration;
 
@@ -29,15 +29,27 @@ struct State {
 // TODO allow to load as service -- fix authentication somehow, maybe post to page?
 // TODO refresh tokens when/if needed
 impl SpotifyScreen {
-    pub fn new(id: &str, secret: &str, redirect: &str) -> Result<Self, &'static str> {
-        let mut oauth = SpotifyOAuth::default()
+    pub fn new(
+        id: &str,
+        secret: &str,
+        redirect: &str,
+        cache_path: Option<PathBuf>,
+    ) -> Result<Self, &'static str> {
+        let oauth = SpotifyOAuth::default()
             .scope(
                 "user-modify-playback-state user-read-playback-state user-read-currently-playing",
             )
             .client_id(id)
             .client_secret(secret)
-            .redirect_uri(redirect)
-            .build();
+            .redirect_uri(redirect);
+
+        let mut oauth = match cache_path {
+            Some(path) => {
+                info!("Building Spotify client with token cache");
+                oauth.cache_path(path).build()
+            }
+            None => oauth.build(),
+        };
 
         match get_token(&mut oauth) {
             Some(token_info) => {
@@ -153,14 +165,21 @@ impl SpotifyScreen {
                     lcd.add_job(Job::empty(1));
                 }
             },
-            Err(e) => {
-                lcd.clear_jobs();
-                lcd.add_job(Job::new(
-                    "Error getting status, might need to update token, consider restart",
-                    0,
-                    Option::from(Duration::from_millis(250)),
-                ));
-                lcd.add_job(Job::empty(1));
+            Err(_) => {
+                // Hopefully this will refresh our token
+                self.client
+                    .client_credentials_manager
+                    .as_ref()
+                    .unwrap()
+                    .get_access_token();
+                info!("Refreshed token?!?!?");
+                // lcd.clear_jobs();
+                // lcd.add_job(Job::new(
+                //     "Error getting status, might need to update token, consider restart",
+                //     0,
+                //     Option::from(Duration::from_millis(250)),
+                // ));
+                // lcd.add_job(Job::empty(1));
             }
         };
     }

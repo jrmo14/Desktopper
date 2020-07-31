@@ -29,3 +29,6 @@ port = "3030"
 id = "your_client_id_here"
 secret = "your_client_secret_here"
 redirect = "your_authentication_redirect_uri_here"
+# I recommend stopping the desktopper_display service and running it yourself to generate a .spotify_token_cache.json file after authenticating,
+# then copying it to the location you want it to be at
+cache_path = "/etc/desktopper/spotify_token_cache.json"

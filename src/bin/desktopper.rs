@@ -1,8 +1,6 @@
 #[macro_use]
 extern crate log;
 extern crate pretty_env_logger;
-#[macro_use]
-extern crate anyhow;
 
 use clap::{App, Arg};
 use desktopper::frontend::screens::music::SpotifyScreen;
@@ -11,6 +9,8 @@ use gpio_cdev::EventType::FallingEdge;
 use gpio_cdev::*;
 use gpio_lcd::lcd::LcdDriver;
 use gpio_lcd::scheduler::ThreadedLcd;
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::time::Instant;
@@ -61,6 +61,7 @@ mod config {
         pub id: String,
         pub secret: String,
         pub redirect: String,
+        pub cache_path: Option<String>,
     }
 
     pub fn parse_file(file_location: &str) -> Config {
@@ -74,6 +75,10 @@ fn main() -> anyhow::Result<()> {
         std::env::set_var("RUST_LOG", "info");
     }
     pretty_env_logger::init();
+    info!(
+        "Working from {}",
+        std::env::current_dir().unwrap().as_path().to_str().unwrap()
+    );
     let matches = App::new("Desktopper")
         .arg(
             Arg::with_name("config_file")
@@ -128,19 +133,23 @@ fn main() -> anyhow::Result<()> {
         cfg.tasks.port.as_str(),
     )));
 
-    match cfg.spotify_auth {
-        Some(auth) => {
-            let screen = SpotifyScreen::new(
-                auth.id.as_str(),
-                auth.secret.as_str(),
-                auth.redirect.as_str(),
-            );
-            match screen {
-                Ok(s) => display_state.add(Box::new(s)),
-                Err(e) => error!("{}", e),
-            }
+    if let Some(auth) = cfg.spotify_auth {
+        let screen = SpotifyScreen::new(
+            auth.id.as_str(),
+            auth.secret.as_str(),
+            auth.redirect.as_str(),
+            match auth.cache_path {
+                Some(cache_path) => match PathBuf::from_str(&*cache_path) {
+                    Ok(path) => Some(path),
+                    Err(_) => None,
+                },
+                None => None,
+            },
+        );
+        match screen {
+            Ok(s) => display_state.add(Box::new(s)),
+            Err(e) => error!("{}", e),
         }
-        None => {}
     }
 
     display_state.add(Box::new(TestScreen {}));
